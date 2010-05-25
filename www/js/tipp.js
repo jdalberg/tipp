@@ -481,6 +481,9 @@ function add_network($where)
 			'</td></tr>' +
 			'<tr><td class="label">Description:</td><td>' +
 			'<input type="text" size="64" maxlength="256" class="network-description"/>' +
+			'</td></tr>' +
+			'<tr><td class="label">Integration data:</td><td>' +
+			'<input type="text" size="32" maxlength="256" class="network-integration"/>' +
 			'</td></tr></table><p>' +
 			"<input class='ok-button' type='image' src='images/notification_done.png' title='Save'/> " +
 			"<input class='cancel-button' type='image' src='images/notification_error.png' title='Cancel'/></p>" +
@@ -545,6 +548,7 @@ function add_network($where)
 			clear_selection();
 			var $net = $form.find(".network");
 			var $descr = $form.find(".network-description");
+			var $integration = $form.find(".network-integration");
 			var $class = $form.find(".network-class");
 			if ($net.val() == "") {
 				$net.effect("bounce", {direction: "left"});
@@ -558,6 +562,7 @@ function add_network($where)
 				limit: limit,
 				net: $net.val(),
 				descr: $descr.val(),
+				integration: $integration.val(),
 				class_id: $class.val(),
 				in_class_range: in_class_range},
 				function (res) {
@@ -988,6 +993,8 @@ function edit_network($li, ev)
 		'<table><tr><td class="label">Class:</td><td>' +
 		gen_class_input(v.class_id) + '</td></tr><tr><td class="label">Description:</td><td>' +
 		'<input type="text" size="64" maxlength="256" class="network-description"/>' +
+		'</td></tr><tr><td class="label">Integration data:</td><td>' +
+		'<input type="text" size="32" maxlength="256" class="network-integration"/>' +
 		'</td></tr></table><p>' +
 		"<input class='ok-button' type='image' src='images/notification_done.png' title='Save'/> " +
 		"<input class='cancel-button' type='image' src='images/notification_error.png' title='Cancel'/> &nbsp; &nbsp; " +
@@ -1000,6 +1007,7 @@ function edit_network($li, ev)
 	var $form = $(form);
 	$form.find("div.edit-header").hide();
 	$form.find(".network-description").val(v.descr);
+	$form.find(".network-integration").val(v.integration);
 	// $li.find(".button-form").after($form);
 	$li.after($form);
 	$form.find("div.edit-header").slideDown("fast", function () {
@@ -1561,6 +1569,7 @@ function submit_edit_network(e, $ni, $form)
 	e.preventDefault();
 	e.stopPropagation();
 	var $descr = $form.find(".network-description");
+	var $integration = $form.find(".network-integration");
 	if ($descr.val().length < 6) {
 		$descr.effect("bounce", {direction: "left"});
 		return carp("Network description is too short", $descr);
@@ -1572,7 +1581,8 @@ function submit_edit_network(e, $ni, $form)
 		what:		"edit-net",
 		id:			v.id,
 		class_id:	$cl.val(),
-		descr:		$descr.val()
+		descr:		$descr.val(),
+		integration:    $integration.val()
 	}, function (res) {
 		message(res.msg);
 		var $new_ni = insert_network(res);
