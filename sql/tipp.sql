@@ -23,6 +23,7 @@ create table networks (
 	net			cidr,
 	class_id	integer references classes,
 	descr		text,
+	integration	text,
 	created		integer,
 	invalidated	integer,  -- 0 = still valid
 	created_by	text,
