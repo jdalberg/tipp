@@ -1,4 +1,4 @@
-#! /usr/bin/speedy
+#! /usr/local/bin/speedy
 use 5.006;
 use strict;
 use warnings;
@@ -133,7 +133,7 @@ sub handle_net
 			sort $n->net;
 			return ($n->id, $n->net,
 				$n->class_id, class_name => $c->name,
-				$n->descr, $n->created, $n->created_by,
+				$n->descr, $n->integration, $n->created, $n->created_by,
 				parent_class_id => $cr->class_id,
 				parent_range_id => $cr->id,
 				wrong_class => ($n->class_id != $cr->class_id));
@@ -151,7 +151,7 @@ sub handle_net
 			sort $n->net;
 			return ($n->id, $n->net,
 				$n->class_id, class_name => $c->name,
-				$n->descr, $n->created, $n->created_by,
+				$n->descr, $n->integration, $n->created, $n->created_by,
 				parent_class_id => $cr->class_id,
 				parent_range_id => $cr->id,
 				wrong_class => ($n->class_id != $cr->class_id));
@@ -216,6 +216,7 @@ sub handle_new_network
 	my $net = param("net") || "";
 	my $class_id = param("class_id") || 0;
 	my $descr = u2p(param("descr")||"");
+	my $integration = u2p(param("integration")||"");
 	my $limit = param("limit")||"";
 	my $in_class_range = (param("in_class_range")||"") eq "true";
 
@@ -266,6 +267,7 @@ sub handle_new_network
 		net			=> $net,
 		class_id	=> $class_id,
 		descr		=> $descr,
+		integration	=> $integration,
 		created		=> $when,
 		invalidated	=> 0,
 		created_by	=> remote_user(),
@@ -314,12 +316,14 @@ sub handle_edit_net
 	my $dbh = connect_db();
 	my $class_id = param("class_id");
 	my $descr    = u2p(param("descr"));
+	my $integration    = u2p(param("integration"));
 	my $net = db_fetch { my $n : networks;  $n->id == $id;  $n->invalidated == 0; };
 	return { error => "No such network (maybe someone else changed it?)" }
 		unless $net;
 	$net->{descr} = u2p($net->{descr});
+	$net->{integration} = u2p($net->{integration});
 	my $msg;
-	if ($descr ne $net->{descr} || $net->{class_id} != $class_id) {
+	if ($descr ne $net->{descr} || $integration ne $net->{integration} || $net->{class_id} != $class_id) {
 		my $when = time;
 		my $who = remote_user();
 		db_update {
@@ -334,6 +338,7 @@ sub handle_edit_net
 			net			=> $net->{net},
 			class_id	=> $class_id,
 			descr		=> $descr,
+			integration	=> $integration,
 			created		=> $when,
 			invalidated	=> 0,
 			created_by	=> $who,
@@ -354,7 +359,7 @@ sub handle_edit_net
 		sort $n->net;
 		return ($n->id, $n->net,
 			$n->class_id, class_name => $c->name,
-			$n->descr, $n->created, $n->created_by,
+			$n->descr, $n->integration, $n->created, $n->created_by,
 			parent_class_id => $cr->class_id,
 			wrong_class => ($n->class_id != $cr->class_id));
 	};
@@ -364,6 +369,7 @@ sub handle_edit_net
 	}
 	$dbh->commit;
 	$new_net->{descr} = u2p($new_net->{descr});
+	$new_net->{integration} = u2p($new_net->{integration});
 	$new_net->{msg} = $msg;
 	$new_net->{created_by} ||= "";
 	gen_calculated_params($new_net);
@@ -397,6 +403,11 @@ sub handle_merge_net
 	return { error => "$n0 and $n1 belong to different classes, cannot merge" }
 		unless $net0->{class_id} == $net1->{class_id};
 
+	return { error => "$n0 and $n1 belong to different integration groups, cannot merge" }
+		unless $net0->{integration} == $net1->{integration};
+
+	my $integration = $net0->{integration};
+
 	$net0->{descr} = u2p($net0->{descr});
 	$net1->{descr} = u2p($net1->{descr});
 	$net0->{descr} =~ s/^\s*\[merge\]\s+//;
@@ -415,6 +426,7 @@ sub handle_merge_net
 		net			=> "$super",
 		class_id	=> $net0->{class_id},
 		descr		=> $descr,
+		integration	=> $integration,
 		created		=> $when,
 		invalidated	=> 0,
 		created_by	=> $who,
@@ -443,7 +455,7 @@ sub handle_merge_net
 		sort $n->net;
 		return ($n->id, $n->net,
 			$n->class_id, class_name => $c->name,
-			$n->descr, $n->created, $n->created_by,
+			$n->descr, $n->integration, $n->created, $n->created_by,
 			parent_class_id => $cr->class_id,
 			wrong_class => ($n->class_id != $cr->class_id));
 	};
@@ -625,11 +637,12 @@ sub handle_ip_net
 		sort $n->net;
 		return ($n->id, $n->net,
 			$n->class_id, class_name => $c->name,
-			$n->descr, $n->created, $n->created_by,
+			$n->descr, $n->integration, $n->created, $n->created_by,
 			parent_class_id => $cr->class_id,
 			wrong_class => ($n->class_id != $cr->class_id));
 	};
 	$net->{descr} = u2p($net->{descr});
+	$net->{integration} = u2p($net->{integration});
 	$net->{created_by} ||= "";
 	gen_calculated_params($net);
 	return $net;
@@ -651,7 +664,7 @@ sub handle_net_history
 		sort $n->created;
 		return ($n->id, $n->net,
 			$n->class_id, class_name => $c->name,
-			$n->descr, $n->created, $n->invalidated, $n->invalidated_by,
+			$n->descr, $n->integration, $n->created, $n->invalidated, $n->invalidated_by,
 			parent_class_id => $cr->class_id, $n->created_by,
 			wrong_class => ($n->class_id != $cr->class_id));
 	};
@@ -663,7 +676,8 @@ sub handle_net_history
 			$fake{net}			= $net;
 			$fake{class_name}	= "unallocated";
 			$fake{descr}		= "";
-			$fake{id}			= 0;
+			$fake{integration}	= "";
+			$fake{id}		= 0;
 			$fake{created}		= $last->{invalidated};
 			$fake{invalidated}	= $n->{created};
 			$fake{created_by}	= $last->{invalidated_by};
@@ -677,7 +691,8 @@ sub handle_net_history
 		$fake{net}			= $net;
 		$fake{class_name}	= "unallocated";
 		$fake{descr}		= "";
-		$fake{id}			= 0;
+		$fake{integration}	= "";
+		$fake{id}		= 0;
 		$fake{created}		= $hist[-1]->{invalidated};
 		$fake{invalidated}	= 0;
 		$fake{created_by}	= $hist[-1]->{invalidated_by};
@@ -685,6 +700,7 @@ sub handle_net_history
 	}
 	for my $c (@hist) {
 		$c->{descr} = u2p($c->{descr});
+		$c->{integration} = u2p($c->{integration});
 		$c->{created_by} ||= "";
 		delete $c->{invalidated_by};
 	}
@@ -1031,6 +1047,7 @@ sub handle_split
 		my $when = time;
 		my $who = remote_user();
 		my $descr = $nf->{descr};
+		my $integration = $nf->{integration};
 		$descr = "[split] $descr" unless $descr =~ /^\[split\]/;
 		for my $nn (@n) {
 			db_insert 'networks', {
@@ -1038,6 +1055,7 @@ sub handle_split
 				net			=> "$nn",
 				class_id	=> $nf->{class_id},
 				descr		=> $descr,
+				integration	=> $integration,
 				created		=> $when,
 				invalidated	=> 0,
 				created_by	=> $who,
@@ -1089,7 +1107,7 @@ sub handle_split
 			sort $n->net;
 			return ($n->id, $n->net,
 				$n->class_id, class_name => $c->name,
-				$n->descr, $n->created, $n->created_by,
+				$n->descr, $n->integration, $n->created, $n->created_by,
 				parent_class_id => $cr->class_id,
 				wrong_class => ($n->class_id != $cr->class_id));
 		};
@@ -1099,6 +1117,7 @@ sub handle_split
 		}
 		for my $new_net (@new) {
 			$new_net->{descr} = u2p($new_net->{descr}||"");
+			$new_net->{integration} = u2p($new_net->{integration}||"");
 			$new_net->{created_by} ||= "";
 			gen_calculated_params($new_net);
 		}
@@ -1351,7 +1370,7 @@ sub search_networks
 	my $dbh = connect_db();
 	my @n = @{
 		$dbh->selectall_arrayref("select " .
-			"n.net, n.id, n.class_id, c.name as class_name, n.descr, n.created, n.created_by, " .
+			"n.net, n.id, n.class_id, c.name as class_name, n.descr, n.integration, n.created, n.created_by, " .
 			"cr.class_id as parent_class_id, (n.class_id <> cr.class_id) as wrong_class" .
 			" from networks n,classes c,classes_ranges cr where " .
 			join(" and ", @net_sql) . " order by net",
@@ -1362,6 +1381,7 @@ sub search_networks
 		for my $n (@n) {
 			$n->{created_by} ||= "";
 			$n->{descr} = u2p($n->{descr});
+			$n->{integration} = u2p($n->{integration});
 			gen_calculated_params($n);
 		}
 		return (n => \@n, nn => scalar(@n));
