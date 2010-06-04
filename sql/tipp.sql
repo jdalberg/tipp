@@ -23,7 +23,6 @@ create table networks (
 	net			cidr,
 	class_id	integer references classes,
 	descr		text,
-	integration	text,
 	created		integer,
 	invalidated	integer,  -- 0 = still valid
 	created_by	text,
@@ -58,3 +57,4 @@ create table changelog (
 	what	char(1), -- R = class range, N = network, I = ip
 	created	integer  -- unix time
 );
+
