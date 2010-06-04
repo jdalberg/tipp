@@ -482,15 +482,32 @@ function add_network($where)
 			'<tr><td class="label">Description:</td><td>' +
 			'<input type="text" size="64" maxlength="256" class="network-description"/>' +
 			'</td></tr>' +
-			'<tr><td class="label">Integration data:</td><td>' +
-			'<input type="text" size="32" maxlength="256" class="network-integration"/>' +
+			'<tr><td class="label">DHCP Integration:</td><td>' +
+			'<input type="checkbox" class="network-integration"/>' +
 			'</td></tr></table><p>' +
+			'<div class="extras-here"></div>' +
 			"<input class='ok-button' type='image' src='images/notification_done.png' title='Save'/> " +
 			"<input class='cancel-button' type='image' src='images/notification_error.png' title='Cancel'/></p>" +
 			'</div></form></div>';
+		
+		var integrationform = '<div ' + id_or_class + '="add-form"><form class="add-form">' +
+		    '<div class="edit-header">DHCP Integration Data</div><div class="edit-form"><table>' +
+			'<tr><td class="label">DHCP Server:</td><td><select class="ni-server">' + gen_dhcp_server_options('') + '</select></td></tr>' +
+			'<tr><td class="label">Group (Shared Network Name):</td><td><input type="text" size="32" maxlength="64" class="ni-group"/></td></tr>' +
+			'<tr><td class="label">Technology</td><td><select class="ni-tech">' + gen_dhcp_tech_options('') + '</select></td></tr>' +
+			'<tr><td class="label">Type</td><td><select class="ni-type">' + gen_dhcp_type_options('') + '</select></td></tr>' +
+			'<tr><td class="label">Option 82 Data:</td><td><input type="text" size="32" maxlength="64" class="ni-o82"/></td></tr>' +
+			'</table></div></form></div>';
+			
 		var $form = $(form);
 		var $insert = $form;
+		var $integrationform = $(integrationform);
+		$form.find(".extras-here").after($integrationform);
+
 		$form.hide();
+		$integrationform.hide();
+		
+
 		var in_class_range = false;
 		if ($where)	{
 			$form.find(".network").val(v.net);
@@ -507,6 +524,18 @@ function add_network($where)
 			$("#view").prepend($form);
 		}
 		$form.slideDown("fast");
+		
+		
+		$form.find('.network-integration').click(function (ev) {
+			ev.stopPropagation();
+		 	var isChecked = $form.find('.network-integration').val();
+			if ( isChecked ) {
+				$integrationform.show();
+			} else {
+				$integrationform.hide();
+			}
+		});
+		
 		$form.find('.cancel-button').click(function (ev) {
 			ev.preventDefault();
 			ev.stopPropagation();
@@ -548,7 +577,23 @@ function add_network($where)
 			clear_selection();
 			var $net = $form.find(".network");
 			var $descr = $form.find(".network-description");
+			
+			
 			var $integration = $form.find(".network-integration");
+			var $nigroup = $integrationform.find(".ni-group");
+			var $niserver = $integrationform.find(".ni-server");
+			var $nitech = $integrationform.find(".ni-tech");
+			var $nitype = $integrationform.find(".ni-type");
+			var $nioption82 = $integrationform.find(".ni-o82");
+			
+			message("server: " + $niserver.val() + 
+			", group: " + $nigroup.val() +
+			", tech: " + $nitech.val() +
+			", type: " + $nitype.val() +
+			", o82: " + $nioption82.val()
+			
+			);
+			
 			var $class = $form.find(".network-class");
 			if ($net.val() == "") {
 				$net.effect("bounce", {direction: "left"});
@@ -564,7 +609,13 @@ function add_network($where)
 				descr: $descr.val(),
 				integration: $integration.val(),
 				class_id: $class.val(),
-				in_class_range: in_class_range},
+				in_class_range: in_class_range,
+				integration: $integration.val(),
+				niserver: $niserver.val(),
+				nigroup: $nigroup.val(),
+				nitech: $nitech.val(),
+				nitype: $nitype.val(),
+				nioption82: $nioption82.val() },
 				function (res) {
 					message(res.msg);
 					if ($where && !in_class_range) {
@@ -992,10 +1043,11 @@ function edit_network($li, ev)
 		'<div class="edit-header">Editing network ' + v.net + '</div><div class="edit-form">' +
 		'<table><tr><td class="label">Class:</td><td>' +
 		gen_class_input(v.class_id) + '</td></tr><tr><td class="label">Description:</td><td>' +
-		'<input type="text" size="64" maxlength="256" class="network-description"/>' +
-		'</td></tr><tr><td class="label">Integration data:</td><td>' +
-		'<input type="text" size="32" maxlength="256" class="network-integration"/>' +
-		'</td></tr></table><p>' +
+		'<input type="text" size="64" maxlength="256" class="network-description"/></td></tr>' +
+		'<tr><td class="label">DHCP Integration:</td><td>' +
+		'<input type="checkbox" class="network-integration" ' + gen_checkbox_state(v.integration) + '/>' +
+		'</td></tr></table>' +
+		'<div class="extras-here"></div>' +
 		"<input class='ok-button' type='image' src='images/notification_done.png' title='Save'/> " +
 		"<input class='cancel-button' type='image' src='images/notification_error.png' title='Cancel'/> &nbsp; &nbsp; " +
 		"<input class='history-button' type='image' src='images/clock.png' title='History'/> &nbsp; &nbsp; " +
@@ -1004,16 +1056,48 @@ function edit_network($li, ev)
 		form += "&nbsp;&nbsp;<input class='merge-button' type='image' src='images/load_download.png' title='Merge with " +
 		v.merge_with + "'/>";
 	form += '</p></div></form></div></td></tr>';
+	var integrationform = '<div class="network-edit"><form class="network-edit-form">' +
+		'<div class="edit-header">DHCP Integration Data</div><div class="edit-form"><table>' +
+		'<tr><td class="label">DHCP Server:</td><td><select class="ni-server">' + gen_dhcp_server_options(v.niserver) + '</select></td></tr>' +
+		'<tr><td class="label">Group (Shared Network Name):</td><td><input type="text" size="32" maxlength="64" class="ni-group"/></td></tr>' +
+		'<tr><td class="label">Technology</td><td><select class="ni-tech">' + gen_dhcp_tech_options(v.nitech) + '</select></td></tr>' +
+		'<tr><td class="label">Type</td><td><select class="ni-type">' + gen_dhcp_type_options(v.nitype) + '</select></td></tr>' +
+		'<tr><td class="label">Option 82 Data:</td><td><input type="text" size="32" maxlength="64" class="ni-o82"/></td></tr>' +
+		'</table></div></form></div>';
+		
 	var $form = $(form);
 	$form.find("div.edit-header").hide();
 	$form.find(".network-description").val(v.descr);
-	$form.find(".network-integration").val(v.integration);
+	var $integrationform = $(integrationform);
+	$form.find(".extras-here").after($integrationform);
+	if ( v.integration == 'on' ) {
+		$integrationform.show();
+	} else {
+		$integrationform.hide();
+	}
+	$integrationform.find(".ni-group").val(v.nigroup);
+	$integrationform.find(".ni-o82").val(v.nioption82);
+	
+	// fill in integration data.
+//	$form.find(".network-integration").val(v.integration);
+
 	// $li.find(".button-form").after($form);
 	$li.after($form);
 	$form.find("div.edit-header").slideDown("fast", function () {
 		$form.find(".network-description").focus().select();
 	});
 	$li.data("$form", $form);
+	$form.find('.network-integration').click(function (ev) {
+		ev.stopPropagation();
+	 	var isChecked = $form.find('.network-integration').val();
+		if ( isChecked ) {
+			$integrationform.slideDown("fast", function () {
+				$integrationform.find(".ni-group").focus().select();
+			});
+		} else {
+			$integrationform.slideUp("fast");
+		}
+	});
 	var remove_form = function(e2) {
 		e2.preventDefault();
 		e2.stopPropagation();
@@ -1023,7 +1107,7 @@ function edit_network($li, ev)
 	}
 	$(ev.target).click(remove_form);
 	$form.find(".cancel-button").click(remove_form);
-	$form.find(".ok-button").click(function (e) { submit_edit_network(e, $li, $form); });
+	$form.find(".ok-button").click(function (e) { submit_edit_network(e, $li, $form, $integrationform); });
 	$form.find(".history-button").click(function(e) { show_network_history(e, $form.find("div.network-edit"), $li.data("@net").net, true); });
 	$form.find(".remove-button").click(function(e) { submit_remove_network(e, $li, $form); });
 	$form.find(".merge-button").click(function(e) { submit_merge_network(e, $li, $form); });
@@ -1042,6 +1126,44 @@ function gen_class_input(selected_id)
 		r += o;
 	}
 	return r + "</select>";
+}
+
+function gen_checkbox_state(val) {
+	if ( val == 'on' ) {
+		return 'checked';
+	}
+	return '';
+}
+
+function gen_dhcp_server_options(selected_name) 
+{
+	var servernames = ['dhcp1-ar'];
+	return gen_options_from_array( servernames, selected_name);
+}
+
+function gen_dhcp_tech_options(selected_tech) 
+{
+	var techs = ['rk','ebsa'];
+	return gen_options_from_array( techs, selected_tech);
+}
+
+function gen_dhcp_type_options(selected_type) 
+{
+	var types = ['data','voip'];
+	return gen_options_from_array( types, selected_type);
+}
+
+function gen_options_from_array( list, val )
+{
+	var res = '';
+	if ( val == '' ) val = list[0];
+	for ( var i = 0; i < list.length; i++ ) {
+		var o = '<option  value="' + list[i] + '"';
+		if ( val == list[i] ) o += ' selected';
+		o += '>' + list[i] + '</option>';
+		res += o;
+	}
+	return res;
 }
 
 function id2class(id)
@@ -1564,7 +1686,7 @@ function fetch_ip_info($form, ip)
 	});
 }
 
-function submit_edit_network(e, $ni, $form)
+function submit_edit_network(e, $ni, $form, $integrationform)
 {
 	e.preventDefault();
 	e.stopPropagation();
@@ -1576,13 +1698,24 @@ function submit_edit_network(e, $ni, $form)
 	}
 	var $cl = $form.find(".network-class");
 	var v = $ni.data("@net");
+	
+	var $niserver = $integrationform.find(".ni-server");
+	var $nigroup = $integrationform.find(".ni-group");
+	var $nitech = $integrationform.find(".ni-tech");
+	var $nitype = $integrationform.find(".ni-type");
+	var $nioption82 = $integrationform.find(".ni-o82");
 
 	remote({
-		what:		"edit-net",
-		id:			v.id,
-		class_id:	$cl.val(),
-		descr:		$descr.val(),
-		integration:    $integration.val()
+		what:		 "edit-net",
+		id:			 v.id,
+		class_id:	 $cl.val(),
+		descr:		 $descr.val(),
+		integration: $integration.val(),
+		niserver:   $niserver.val(),
+		nigroup:    $nigroup.val(),
+		nitech:     $nitech.val(),
+		nitype:     $nitype.val(),
+		nio82:      $nioption82.val()
 	}, function (res) {
 		message(res.msg);
 		var $new_ni = insert_network(res);

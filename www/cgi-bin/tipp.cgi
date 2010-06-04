@@ -27,7 +27,7 @@ if ((param("ver")||"") ne $VERSION) {
 	if ($r) {
 		result($r);
 	} else {
-		result({error => "Server-side handler failed" . ($@?":<br/><code>$@</code>":"")});
+		result({error => "Server-side handler failed" . ( $@ ? ":<br/><code>$@</code>" : "")});
 	}
 } else {
 	result({error => "invalid request: $what"});
@@ -133,7 +133,7 @@ sub handle_net
 			sort $n->net;
 			return ($n->id, $n->net,
 				$n->class_id, class_name => $c->name,
-				$n->descr, $n->integration, $n->created, $n->created_by,
+				$n->descr, $n->created, $n->created_by,
 				parent_class_id => $cr->class_id,
 				parent_range_id => $cr->id,
 				wrong_class => ($n->class_id != $cr->class_id));
@@ -151,7 +151,7 @@ sub handle_net
 			sort $n->net;
 			return ($n->id, $n->net,
 				$n->class_id, class_name => $c->name,
-				$n->descr, $n->integration, $n->created, $n->created_by,
+				$n->descr, $n->created, $n->created_by,
 				parent_class_id => $cr->class_id,
 				parent_range_id => $cr->id,
 				wrong_class => ($n->class_id != $cr->class_id));
@@ -207,7 +207,28 @@ sub handle_net
 		$c->{descr} = u2p($c->{descr}||"");
 		$c->{created_by} ||= "";
 		gen_calculated_params($c);
+  	
+		# append the integration data - jda@fr
+    	my @integrationdata = db_fetch {
+  	  		my $i : integration;
+  	  		$i->network == $c->{id};
+      		$i->invalidated == 0;
+  		};
+  	
+  		# rearrange to be more manageble.
+    	my %idata = ();
+    	foreach my $r (@integrationdata) {
+        	$idata{$r->{keyname}} = $r->{value};
+    	}
+    
+    	$c->{integration} = $idata{dhcpintegration} || '';
+    	$c->{niserver} = $idata{dhcpserver} || '';
+    	$c->{nigroup} = $idata{dhcpgroup} || '';
+    	$c->{nitech} = $idata{dhcptech} || '';
+    	$c->{nitype} = $idata{dhcptype} || '';
+    	$c->{nioption82} = $idata{dhcpoption82} || '';
 	}
+	
 	return \@c;
 }
 
@@ -219,6 +240,11 @@ sub handle_new_network
 	my $integration = u2p(param("integration")||"");
 	my $limit = param("limit")||"";
 	my $in_class_range = (param("in_class_range")||"") eq "true";
+	my $niserver = param("niserver");
+	my $nigroup = u2p(param("nigroup"));
+	my $nitech = param("nitech");
+	my $nitype = param("nitype");
+	my $nioption82 = u2p(param("nioption82"));
 
 	return { error => "Network must be specified" } unless $net;
 	return { error => "Network class must be specified" } unless $class_id;
@@ -227,6 +253,11 @@ sub handle_new_network
 	return { error => "Bad network specification" } unless $nn;
 	$nn = $nn->network;
 	$net = "$nn";
+	
+	if ( $integration eq 'on' ) {
+		return { error => "Bad dhcp group specification" } unless $nigroup;
+		return { error => "Bad dhcp option 82 bind specification" } unless $nioption82;
+	}
 
 	if ($limit) {
 		my $n_limit = N($limit);
@@ -262,15 +293,16 @@ sub handle_new_network
 	return { error => "Network $net overlaps with existing network $over" } if $over;
 
 	my $when = time;
+	my $who = remote_user();
+	
 	db_insert 'networks', {
 		id			=> sql("nextval('networks_id_seq')"),
 		net			=> $net,
 		class_id	=> $class_id,
 		descr		=> $descr,
-		integration	=> $integration,
 		created		=> $when,
 		invalidated	=> 0,
-		created_by	=> remote_user(),
+		created_by	=> $who,
 	};
 
 	my $new_net = db_fetch {
@@ -303,6 +335,60 @@ sub handle_new_network
 			return {msg => "Network $net successfully inserted", n => $ret};
 		}
 	}
+
+	# use the id of the new net to insert values into the integration db, if $integration is set.
+	if ( $integration eq 'on' ) {
+       db_insert 'integration', {
+     		network		=> $new_net->{id},
+     		created		=> $when,
+     		invalidated	=> 0,
+     		created_by	=> $who,
+     		keyname => 'dhcpintegration',
+     		value => $integration
+     	},
+     	{
+     		network		=> $new_net->{id},
+     		created		=> $when,
+     		invalidated	=> 0,
+     		created_by	=> $who,
+     		keyname => 'dhcpserver',
+     		value => $niserver
+     	},
+     	{
+     		network		=> $new_net->{id},
+     		created		=> $when,
+     		invalidated	=> 0,
+     		created_by	=> $who,
+     		keyname => 'dhcpgroup',
+     		value => $nigroup
+     	},
+     	{
+     		network		=> $new_net->{id},
+     		created		=> $when,
+     		invalidated	=> 0,
+     		created_by	=> $who,
+     		keyname => 'dhcptech',
+     		value => $nitech
+     	},
+     	{
+     		network		=> $new_net->{id},
+     		created		=> $when,
+     		invalidated	=> 0,
+     		created_by	=> $who,
+     		keyname => 'dhcptype',
+     		value => $nitype
+     	},
+     	{
+     		network		=> $new_net->{id},
+     		created		=> $when,
+     		invalidated	=> 0,
+     		created_by	=> $who,
+     		keyname => 'dhcpoption82',
+     		value => $nioption82
+     	};
+		log_change(network => "Created network integration data for $new_net->{net}", when => $when);
+	}
+
 	$dbh->commit;
 	$new_net->{descr} = u2p($new_net->{descr});
 	$new_net->{msg} = "Network $net successfully inserted";
@@ -317,13 +403,18 @@ sub handle_edit_net
 	my $class_id = param("class_id");
 	my $descr    = u2p(param("descr"));
 	my $integration    = u2p(param("integration"));
+	my $niserver = param("niserver");
+	my $nigroup = u2p(param("nigroup"));
+	my $nitech = param("nitech");
+	my $nitype = param("nitype");
+	my $nio82 = param("nio82");
+	
 	my $net = db_fetch { my $n : networks;  $n->id == $id;  $n->invalidated == 0; };
 	return { error => "No such network (maybe someone else changed it?)" }
 		unless $net;
 	$net->{descr} = u2p($net->{descr});
-	$net->{integration} = u2p($net->{integration});
 	my $msg;
-	if ($descr ne $net->{descr} || $integration ne $net->{integration} || $net->{class_id} != $class_id) {
+	if ($descr ne $net->{descr} || $net->{class_id} != $class_id) {
 		my $when = time;
 		my $who = remote_user();
 		db_update {
@@ -338,7 +429,6 @@ sub handle_edit_net
 			net			=> $net->{net},
 			class_id	=> $class_id,
 			descr		=> $descr,
-			integration	=> $integration,
 			created		=> $when,
 			invalidated	=> 0,
 			created_by	=> $who,
@@ -359,7 +449,7 @@ sub handle_edit_net
 		sort $n->net;
 		return ($n->id, $n->net,
 			$n->class_id, class_name => $c->name,
-			$n->descr, $n->integration, $n->created, $n->created_by,
+			$n->descr, $n->created, $n->created_by,
 			parent_class_id => $cr->class_id,
 			wrong_class => ($n->class_id != $cr->class_id));
 	};
@@ -367,9 +457,109 @@ sub handle_edit_net
 		$dbh->rollback;
 		return { error => "Cannot update network information" };
 	}
+
+  # now update the network dhcp integration data jda@fr
+  # same principle- invalidate data associated with invalidated network
+  # and insert new stuff..
+  
+  # check for actual change - if no change, update the network id in the integration
+  # table, if something change, invalidate old data and insert new data.
+  my @integrationdata = db_fetch { my $i : integration;  $i->network == $id;  $i->invalidated == 0; };
+  
+  # @integrationdata is now a list of hashrefs containing rows of integration data
+  # rearrange to be more manageble.
+  my %idata = ();
+  foreach my $r (@integrationdata) {
+      $idata{$r->{keyname}} = $r->{value};
+  }
+  
+  if ( scalar(keys(%idata))<6 ||
+      $idata{dhcpintegration} ne $integration ||
+      $idata{dhcpserver} ne $niserver ||
+      $idata{dhcpgroup} ne $nigroup ||
+      $idata{dhcptech} ne $nitech ||
+      $idata{dhcptype} ne $nitype ||
+      $idata{dhcpo82} ne $nio82 
+     ) {
+       # new or updated..
+       my $when = time;
+   		 my $who = remote_user();
+   		
+       my $res = db_update {
+         my $ni : integration;
+         $ni->network == $id;
+         $ni->invalidated = $when;
+     		 $ni->invalidated_by = $who;
+       };
+
+       db_insert 'integration', {
+     		network		=> $new_net->{id},
+     		created		=> $when,
+     		invalidated	=> 0,
+     		created_by	=> $who,
+     		keyname => 'dhcpintegration',
+     		value => $integration
+     	},
+     	{
+     		network		=> $new_net->{id},
+     		created		=> $when,
+     		invalidated	=> 0,
+     		created_by	=> $who,
+     		keyname => 'dhcpserver',
+     		value => $niserver
+     	},
+     	{
+     		network		=> $new_net->{id},
+     		created		=> $when,
+     		invalidated	=> 0,
+     		created_by	=> $who,
+     		keyname => 'dhcpgroup',
+     		value => $nigroup
+     	},
+     	{
+     		network		=> $new_net->{id},
+     		created		=> $when,
+     		invalidated	=> 0,
+     		created_by	=> $who,
+     		keyname => 'dhcptech',
+     		value => $nitech
+     	},
+     	{
+     		network		=> $new_net->{id},
+     		created		=> $when,
+     		invalidated	=> 0,
+     		created_by	=> $who,
+     		keyname => 'dhcptype',
+     		value => $nitype
+     	},
+     	{
+     		network		=> $new_net->{id},
+     		created		=> $when,
+     		invalidated	=> 0,
+     		created_by	=> $who,
+     		keyname => 'dhcpoption82',
+     		value => $nio82
+     	};
+     	log_change(network => "Modified network integration data for $net->{net}", when => $when);
+  }
+  else {
+    # nothing changed... update the network id...
+    my $res = db_update {
+      my $ni : integration;
+      
+      $ni->network == $id;
+      $ni->invalidated = 0;
+      
+      $ni->network = $new_net->{id};
+    };
+   
+  }
+  
+  
+	
 	$dbh->commit;
+	
 	$new_net->{descr} = u2p($new_net->{descr});
-	$new_net->{integration} = u2p($new_net->{integration});
 	$new_net->{msg} = $msg;
 	$new_net->{created_by} ||= "";
 	gen_calculated_params($new_net);
@@ -455,7 +645,7 @@ sub handle_merge_net
 		sort $n->net;
 		return ($n->id, $n->net,
 			$n->class_id, class_name => $c->name,
-			$n->descr, $n->integration, $n->created, $n->created_by,
+			$n->descr, $n->created, $n->created_by,
 			parent_class_id => $cr->class_id,
 			wrong_class => ($n->class_id != $cr->class_id));
 	};
@@ -637,7 +827,7 @@ sub handle_ip_net
 		sort $n->net;
 		return ($n->id, $n->net,
 			$n->class_id, class_name => $c->name,
-			$n->descr, $n->integration, $n->created, $n->created_by,
+			$n->descr, $n->created, $n->created_by,
 			parent_class_id => $cr->class_id,
 			wrong_class => ($n->class_id != $cr->class_id));
 	};
@@ -664,7 +854,7 @@ sub handle_net_history
 		sort $n->created;
 		return ($n->id, $n->net,
 			$n->class_id, class_name => $c->name,
-			$n->descr, $n->integration, $n->created, $n->invalidated, $n->invalidated_by,
+			$n->descr, $n->created, $n->invalidated, $n->invalidated_by,
 			parent_class_id => $cr->class_id, $n->created_by,
 			wrong_class => ($n->class_id != $cr->class_id));
 	};
@@ -906,14 +1096,15 @@ sub handle_remove_net
 	my $net = db_fetch {
 		my $n : networks;
 		$n->id == $id;
-		return $n->net;
+		return ($n->id,$n->net);
 	};
 	return {error => "Network not found"} unless $net;
+
 	my $when = time;
 	my $who = remote_user();
 	db_update {
 		my $ip : ips;
-		inet_contains($net, $ip->ip);
+		inet_contains($net->{net}, $ip->ip);
 		$ip->invalidated == 0;
 
 		$ip->invalidated = $when;
@@ -922,14 +1113,21 @@ sub handle_remove_net
 	db_update {
 		my $n : networks;
 		$n->invalidated == 0;
-		$n->net == $net;
+		$n->net == $net->{net};
 
 		$n->invalidated = $when;
 		$n->invalidated_by = $who;
 	};
+	db_update {
+		my $i : integration;
+		$i->network == $net->{id};
+		
+		$i->invalidated = $when;
+		$i->invalidated_by = $who;
+	};
 	log_change(network => "Removed network $net", when => $when);
 	$dbh->commit;
-	return {msg => "Network $net successfully removed"};
+	return {msg => "Network $net->net successfully removed"};
 }
 
 sub handle_search
@@ -1107,7 +1305,7 @@ sub handle_split
 			sort $n->net;
 			return ($n->id, $n->net,
 				$n->class_id, class_name => $c->name,
-				$n->descr, $n->integration, $n->created, $n->created_by,
+				$n->descr, $n->created, $n->created_by,
 				parent_class_id => $cr->class_id,
 				wrong_class => ($n->class_id != $cr->class_id));
 		};
@@ -1370,7 +1568,7 @@ sub search_networks
 	my $dbh = connect_db();
 	my @n = @{
 		$dbh->selectall_arrayref("select " .
-			"n.net, n.id, n.class_id, c.name as class_name, n.descr, n.integration, n.created, n.created_by, " .
+			"n.net, n.id, n.class_id, c.name as class_name, n.descr, n.created, n.created_by, " .
 			"cr.class_id as parent_class_id, (n.class_id <> cr.class_id) as wrong_class" .
 			" from networks n,classes c,classes_ranges cr where " .
 			join(" and ", @net_sql) . " order by net",
